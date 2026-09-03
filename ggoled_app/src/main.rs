@@ -4,7 +4,7 @@ mod os;
 
 use chrono::{DateTime, Local, TimeDelta, Timelike};
 use ggoled_draw::{DrawDevice, DrawEvent, LayerId, ShiftMode, TextRenderer, bitmap_from_memory};
-use ggoled_lib::Device;
+use ggoled_lib::{Bitmap, Device};
 use os::{Media, OSFeatures, OSImpl};
 use rfd::{MessageDialog, MessageLevel};
 use sdl3_sys::everything as sdl;
@@ -46,6 +46,13 @@ impl ConfigShiftMode {
     }
 }
 
+#[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq)]
+enum ConfigQuitMode {
+    #[default]
+    Screensaver,
+    StockUi,
+}
+
 #[derive(Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq)]
 enum StatusNotifyMode {
     Off,
@@ -71,6 +78,7 @@ struct Config {
     idle_timeout: bool,
     oled_shift: ConfigShiftMode,
     status_notify: StatusNotifyMode,
+    quit_mode: ConfigQuitMode,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -81,6 +89,7 @@ impl Default for Config {
             idle_timeout: true,
             oled_shift: ConfigShiftMode::default(),
             status_notify: StatusNotifyMode::default(),
+            quit_mode: ConfigQuitMode::default(),
         }
     }
 }
@@ -180,6 +189,7 @@ enum MenuEvent {
     SetTimeMode(ConfigTimeMode),
     SetShiftMode(ConfigShiftMode),
     SetStatusNotifyMode(StatusNotifyMode),
+    SetQuitMode(ConfigQuitMode),
     Quit,
 }
 
@@ -307,6 +317,18 @@ fn main() {
         MenuEvent::SetShiftMode,
     );
 
+    let tm_quit_mode_radio = RadioMenu::new(
+        menu,
+        c"On app quit",
+        &[
+            (c"Screensaver", ConfigQuitMode::Screensaver),
+            (c"Stock UI", ConfigQuitMode::StockUi),
+        ],
+        config.quit_mode,
+        &menu_tx,
+        MenuEvent::SetQuitMode,
+    );
+
     unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, std::ptr::null(), sdl::SDL_TRAYENTRY_BUTTON) }; // separator
     let tm_quit = unsafe { sdl::SDL_InsertTrayEntryAt(menu, -1, c"Quit".as_ptr(), sdl::SDL_TRAYENTRY_BUTTON) };
     bind_menu_event(tm_quit, &menu_tx, MenuEvent::Quit);
@@ -426,6 +448,11 @@ fn main() {
                     tm_shift_radio.update_checked(mode);
                     dev.set_shift_mode(config.oled_shift.to_api());
                 }
+                MenuEvent::SetQuitMode(mode) => {
+                    config_updated = true;
+                    config.quit_mode = mode;
+                    tm_quit_mode_radio.update_checked(mode);
+                }
                 MenuEvent::Quit => break 'main,
             }
         }
@@ -532,5 +559,9 @@ fn main() {
         sleep(Duration::from_millis(10));
     }
     let dev = dev.stop();
-    dev.return_to_ui().unwrap();
+    match config.quit_mode {
+        ConfigQuitMode::Screensaver => dev.draw(&Bitmap::new(dev.width, dev.height, false), 0, 0),
+        ConfigQuitMode::StockUi => dev.return_to_ui(),
+    }
+    .unwrap();
 }
