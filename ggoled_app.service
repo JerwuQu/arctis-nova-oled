@@ -1,5 +1,8 @@
 [Unit]
 Description=ggoled_app
+# Remove if running without DE
+PartOf=graphical-session.target
+After=graphical-session.target
 
 [Service]
 Type=simple
@@ -8,4 +11,5 @@ Restart=on-failure
 RestartSec=3
 
 [Install]
-WantedBy=default.target
+# Swap to "default.target" if running without DE
+WantedBy=graphical-session.target
